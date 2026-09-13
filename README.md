@@ -26,7 +26,7 @@ The Docker image serves the compiled application on port 8080 and reads the same
 
 ## Structure
 
-`src/features/` groups jobs, exploration, settings, and automation views. `src/app/` owns routing and providers; `src/config/` resolves runtime settings. See the [documentation map](docs/README.md) for architecture and UI contracts.
+`src/features/` groups jobs, exploration, settings, and automation views. `src/app/` owns routing and providers; `src/config/` resolves runtime settings. See the [design documentation](docs/design/README.md) for the interface and [API grouping contract](docs/API_JOB_GROUPING.md) for vacancy grouping.
 
 ## License
 
