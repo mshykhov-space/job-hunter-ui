@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 
 import { AuthContext } from "@/hooks/useAuth";
@@ -21,6 +21,21 @@ const decodePermissions = (token: string): string[] => {
 export const OidcBridge = ({ children }: OidcBridgeProps) => {
   const auth = useOidcAuth();
   const accessToken = auth.user?.access_token;
+
+  const hasRecoverableExpiredSession =
+    !auth.isLoading &&
+    !auth.isAuthenticated &&
+    auth.user?.expired === true &&
+    !!auth.user.refresh_token;
+  const attemptedExpiredSessionRecovery = useRef(false);
+  const { signinSilent } = auth;
+
+  useEffect(() => {
+    if (!hasRecoverableExpiredSession || attemptedExpiredSessionRecovery.current) return;
+
+    attemptedExpiredSessionRecovery.current = true;
+    void signinSilent();
+  }, [hasRecoverableExpiredSession, signinSilent]);
 
   const permissions = useMemo(
     () => (accessToken ? decodePermissions(accessToken) : EMPTY_PERMISSIONS),
