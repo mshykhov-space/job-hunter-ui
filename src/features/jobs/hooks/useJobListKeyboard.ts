@@ -32,8 +32,16 @@ export const useJobListKeyboard = (args: UseJobListKeyboardArgs) => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const { count, enabled, hasNextPage, statusPending, onOpen, onOpenPrimary, onStatus, onLoadMore } =
-        stateRef.current;
+      const {
+        count,
+        enabled,
+        hasNextPage,
+        statusPending,
+        onOpen,
+        onOpenPrimary,
+        onStatus,
+        onLoadMore,
+      } = stateRef.current;
       if (!enabled || count === 0 || hasModifier(e) || isTypingTarget(e.target)) return;
       const current = selectedRef.current;
 
