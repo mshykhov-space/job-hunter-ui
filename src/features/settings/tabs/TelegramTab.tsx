@@ -4,6 +4,7 @@ import { Card, Checkbox, Flex, Input, Skeleton, Switch, Typography } from "antd"
 
 import { useJobSources } from "@/features/jobs/hooks/useJobSources";
 
+import { PreferencesLoadError } from "../components/PreferencesLoadError";
 import { SaveBar } from "../components/SaveBar";
 import { useDirtyForm } from "../hooks/useDirtyForm";
 import { usePreferences, useSaveTelegramPreferences } from "../hooks/usePreferences";
@@ -11,7 +12,7 @@ import type { TelegramPreferences } from "../types";
 import { EMPTY_PREFERENCES } from "../types";
 
 export const TelegramTab = () => {
-  const { data: preferences, isLoading } = usePreferences();
+  const { data: preferences, isLoading, isError, isFetching, refetch } = usePreferences();
   const { data: sources = [] } = useJobSources();
   const saveMutation = useSaveTelegramPreferences();
   const [saved, setSaved] = useState(false);
@@ -32,6 +33,9 @@ export const TelegramTab = () => {
   }, [saved]);
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 6 }} />;
+  if (isError || !preferences) {
+    return <PreferencesLoadError retrying={isFetching} onRetry={() => void refetch()} />;
+  }
 
   return (
     <Flex vertical gap={16}>

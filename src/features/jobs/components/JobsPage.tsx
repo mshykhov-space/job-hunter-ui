@@ -60,6 +60,7 @@ export const JobsPage = () => {
   };
 
   const handleStatusChange = (groupId: string, status: UserJobStatus) => {
+    if (statusMutation.isPending) return;
     statusMutation.mutate(
       { groupId, status },
       {
@@ -74,6 +75,7 @@ export const JobsPage = () => {
     count: jobs.length,
     enabled: !reviewMode.isActive,
     hasNextPage: !!hasNextPage,
+    statusPending: statusMutation.isPending,
     onOpen: (i) => handleEnterReview(jobs[i]),
     onOpenPrimary: (i) => openPrimary(jobs[i]),
     onStatus: (i, status) => handleStatusChange(jobs[i].groupId, status),

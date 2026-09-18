@@ -8,6 +8,7 @@ interface UseJobListKeyboardArgs {
   count: number;
   enabled: boolean;
   hasNextPage: boolean;
+  statusPending: boolean;
   onOpen: (index: number) => void;
   onOpenPrimary: (index: number) => void;
   onStatus: (index: number, status: UserJobStatus) => void;
@@ -31,8 +32,16 @@ export const useJobListKeyboard = (args: UseJobListKeyboardArgs) => {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const { count, enabled, hasNextPage, onOpen, onOpenPrimary, onStatus, onLoadMore } =
-        stateRef.current;
+      const {
+        count,
+        enabled,
+        hasNextPage,
+        statusPending,
+        onOpen,
+        onOpenPrimary,
+        onStatus,
+        onLoadMore,
+      } = stateRef.current;
       if (!enabled || count === 0 || hasModifier(e) || isTypingTarget(e.target)) return;
       const current = selectedRef.current;
 
@@ -53,7 +62,7 @@ export const useJobListKeyboard = (args: UseJobListKeyboardArgs) => {
         const action = matchShortcut(e.code);
         if (!action) return;
         const status = STATUS_ACTIONS[action];
-        if (status) {
+        if (status && !statusPending) {
           e.preventDefault();
           onStatus(current, status);
         } else if (action === "openOriginal") {

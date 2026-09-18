@@ -50,22 +50,22 @@ export const JobReviewCard = ({
   const { keyLabel } = useKeybindings();
 
   const handleApply = useCallback(() => {
-    if (job.status !== USER_JOB_STATUS.APPLIED) {
+    if (!statusLoading && job.status !== USER_JOB_STATUS.APPLIED) {
       onStatusChange(job.groupId, USER_JOB_STATUS.APPLIED);
     }
-  }, [job, onStatusChange]);
+  }, [job, onStatusChange, statusLoading]);
 
   const handleDecline = useCallback(() => {
-    if (job.status !== USER_JOB_STATUS.IRRELEVANT) {
+    if (!statusLoading && job.status !== USER_JOB_STATUS.IRRELEVANT) {
       onStatusChange(job.groupId, USER_JOB_STATUS.IRRELEVANT);
     }
-  }, [job, onStatusChange]);
+  }, [job, onStatusChange, statusLoading]);
 
   const handleReset = useCallback(() => {
-    if (job.status !== USER_JOB_STATUS.NEW) {
+    if (!statusLoading && job.status !== USER_JOB_STATUS.NEW) {
       onStatusChange(job.groupId, USER_JOB_STATUS.NEW);
     }
-  }, [job, onStatusChange]);
+  }, [job, onStatusChange, statusLoading]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
