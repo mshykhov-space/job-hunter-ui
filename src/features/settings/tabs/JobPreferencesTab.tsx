@@ -5,6 +5,7 @@ import { Collapse, Flex, Skeleton } from "antd";
 
 import { AboutCard } from "../components/AboutCard";
 import { MatchingSection } from "../components/MatchingSection";
+import { PreferencesLoadError } from "../components/PreferencesLoadError";
 import { SaveBar } from "../components/SaveBar";
 import { SearchSection } from "../components/SearchSection";
 import { useAboutForm } from "../hooks/useAboutForm";
@@ -21,7 +22,7 @@ import type { MatchingPreferences, SearchPreferences } from "../types";
 import { EMPTY_PREFERENCES } from "../types";
 
 export const JobPreferencesTab = () => {
-  const { data: preferences, isLoading } = usePreferences();
+  const { data: preferences, isLoading, isError, isFetching, refetch } = usePreferences();
   const saveSearchMutation = useSaveSearchPreferences();
   const saveMatchingMutation = useSaveMatchingPreferences();
   const suggestRematch = useRematchPrompt();
@@ -66,6 +67,9 @@ export const JobPreferencesTab = () => {
   );
 
   if (isLoading) return <Skeleton active paragraph={{ rows: 14 }} />;
+  if (isError || !preferences) {
+    return <PreferencesLoadError retrying={isFetching} onRetry={() => void refetch()} />;
+  }
 
   return (
     <Collapse
