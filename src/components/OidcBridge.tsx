@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 
 import { AuthContext } from "@/hooks/useAuth";
@@ -27,15 +27,40 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
     !auth.isAuthenticated &&
     auth.user?.expired === true &&
     !!auth.user.refresh_token;
-  const attemptedExpiredSessionRecovery = useRef(false);
+  const expiredSessionRecoveryKey = hasRecoverableExpiredSession
+    ? auth.user?.expires_at
+    : undefined;
+  const attemptedExpiredSessionRecovery = useRef<number | undefined>(undefined);
+  const [failedExpiredSessionRecovery, setFailedExpiredSessionRecovery] = useState<
+    number | undefined
+  >(undefined);
   const { signinSilent } = auth;
 
   useEffect(() => {
-    if (!hasRecoverableExpiredSession || attemptedExpiredSessionRecovery.current) return;
+    if (
+      !expiredSessionRecoveryKey ||
+      attemptedExpiredSessionRecovery.current === expiredSessionRecoveryKey
+    )
+      return;
 
-    attemptedExpiredSessionRecovery.current = true;
-    void signinSilent();
-  }, [hasRecoverableExpiredSession, signinSilent]);
+    attemptedExpiredSessionRecovery.current = expiredSessionRecoveryKey;
+    void (async () => {
+      try {
+        await signinSilent();
+      } catch {
+        try {
+          await signinSilent({ forceIframeAuth: true });
+        } catch {
+          console.warn("OIDC session recovery failed");
+          setFailedExpiredSessionRecovery(expiredSessionRecoveryKey);
+        }
+      }
+    })();
+  }, [expiredSessionRecoveryKey, signinSilent]);
+
+  const isLoading =
+    auth.isLoading ||
+    (hasRecoverableExpiredSession && failedExpiredSessionRecovery !== expiredSessionRecoveryKey);
 
   const permissions = useMemo(
     () => (accessToken ? decodePermissions(accessToken) : EMPTY_PERMISSIONS),
@@ -62,7 +87,7 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
     <AuthContext.Provider
       value={{
         isAuthenticated: auth.isAuthenticated,
-        isLoading: auth.isLoading,
+        isLoading,
         isConfigured: true,
         permissions: resolvedPermissions,
         user: profile
