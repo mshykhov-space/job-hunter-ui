@@ -8,6 +8,26 @@ interface OidcBridgeProps {
 }
 
 const EMPTY_PERMISSIONS: string[] = [];
+const SESSION_RECOVERY_ATTEMPT_TIMEOUT_MS = 5_000;
+
+const withSessionRecoveryTimeout = <T,>(operation: Promise<T>): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(
+      () => reject(new Error("OIDC session recovery timed out")),
+      SESSION_RECOVERY_ATTEMPT_TIMEOUT_MS
+    );
+
+    operation.then(
+      (value) => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
 
 const decodePermissions = (token: string): string[] => {
   try {
@@ -46,10 +66,10 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
     attemptedExpiredSessionRecovery.current = expiredSessionRecoveryKey;
     void (async () => {
       try {
-        await signinSilent();
+        await withSessionRecoveryTimeout(signinSilent());
       } catch {
         try {
-          await signinSilent({ forceIframeAuth: true });
+          await withSessionRecoveryTimeout(signinSilent({ forceIframeAuth: true }));
         } catch {
           console.warn("OIDC session recovery failed");
           setFailedExpiredSessionRecovery(expiredSessionRecoveryKey);

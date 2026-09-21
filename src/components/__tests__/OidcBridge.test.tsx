@@ -1,7 +1,7 @@
 import { useAuth as useOidcAuth } from "react-oidc-context";
 
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OidcBridge } from "@/components/OidcBridge";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,6 +20,10 @@ const AuthStatus = () => {
 describe("OidcBridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("restores an expired session with the stored refresh token", async () => {
@@ -70,6 +74,38 @@ describe("OidcBridge", () => {
     );
 
     expect(screen.getByText("Restoring session")).toBeInTheDocument();
+  });
+
+  it("releases the app when silent session recovery never settles", async () => {
+    vi.useFakeTimers();
+    const signinSilent = vi.fn(() => new Promise(() => undefined));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    mockUseOidcAuth.mockReturnValue({
+      isLoading: false,
+      isAuthenticated: false,
+      user: {
+        expired: true,
+        expires_at: 1,
+        refresh_token: "stored-refresh-token",
+        access_token: "expired-access-token",
+        profile: { sub: "owner" },
+      },
+      signinSilent,
+    } as unknown as ReturnType<typeof useOidcAuth>);
+
+    render(
+      <OidcBridge>
+        <AuthStatus />
+      </OidcBridge>
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(warn).toHaveBeenCalledOnce();
   });
 
   it("uses the Authentik session when the stored refresh token is rejected", async () => {
