@@ -8,6 +8,7 @@ interface OidcBridgeProps {
 }
 
 const EMPTY_PERMISSIONS: string[] = [];
+const OIDC_INITIALIZATION_TIMEOUT_MS = 10_000;
 const SESSION_RECOVERY_ATTEMPT_TIMEOUT_MS = 5_000;
 
 const withSessionRecoveryTimeout = <T,>(operation: Promise<T>): Promise<T> =>
@@ -41,6 +42,16 @@ const decodePermissions = (token: string): string[] => {
 export const OidcBridge = ({ children }: OidcBridgeProps) => {
   const auth = useOidcAuth();
   const accessToken = auth.user?.access_token;
+  const [oidcInitializationTimedOut, setOidcInitializationTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!auth.isLoading) return;
+    const timeout = window.setTimeout(
+      () => setOidcInitializationTimedOut(true),
+      OIDC_INITIALIZATION_TIMEOUT_MS
+    );
+    return () => window.clearTimeout(timeout);
+  }, [auth.isLoading]);
 
   const hasRecoverableExpiredSession =
     !auth.isLoading &&
@@ -79,7 +90,7 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
   }, [expiredSessionRecoveryKey, signinSilent]);
 
   const isLoading =
-    auth.isLoading ||
+    (auth.isLoading && !oidcInitializationTimedOut) ||
     (hasRecoverableExpiredSession && failedExpiredSessionRecovery !== expiredSessionRecoveryKey);
 
   const permissions = useMemo(

@@ -26,6 +26,28 @@ describe("OidcBridge", () => {
     vi.useRealTimers();
   });
 
+  it("releases the app when OIDC initialization never settles", async () => {
+    vi.useFakeTimers();
+
+    mockUseOidcAuth.mockReturnValue({
+      isLoading: true,
+      isAuthenticated: false,
+      signinSilent: vi.fn(),
+    } as unknown as ReturnType<typeof useOidcAuth>);
+
+    render(
+      <OidcBridge>
+        <AuthStatus />
+      </OidcBridge>
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+  });
+
   it("restores an expired session with the stored refresh token", async () => {
     const signinSilent = vi.fn().mockResolvedValue({ access_token: "fresh-token" });
 
