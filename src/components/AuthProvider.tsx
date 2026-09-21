@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       client_id={OIDC_CONFIG.clientId}
       redirect_uri={window.location.origin}
       scope="openid profile email offline_access job-hunter-api"
-      automaticSilentRenew={true}
+      automaticSilentRenew={false}
       userStore={new WebStorageStateStore({ store: window.localStorage })}
       onSigninCallback={onSigninCallback}
     >
