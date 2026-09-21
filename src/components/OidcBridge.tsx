@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 
 import { AuthContext } from "@/hooks/useAuth";
@@ -9,26 +9,6 @@ interface OidcBridgeProps {
 
 const EMPTY_PERMISSIONS: string[] = [];
 const OIDC_INITIALIZATION_TIMEOUT_MS = 10_000;
-const SESSION_RECOVERY_ATTEMPT_TIMEOUT_MS = 5_000;
-
-const withSessionRecoveryTimeout = <T,>(operation: Promise<T>): Promise<T> =>
-  new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(
-      () => reject(new Error("OIDC session recovery timed out")),
-      SESSION_RECOVERY_ATTEMPT_TIMEOUT_MS
-    );
-
-    operation.then(
-      (value) => {
-        window.clearTimeout(timeout);
-        resolve(value);
-      },
-      (error: unknown) => {
-        window.clearTimeout(timeout);
-        reject(error);
-      }
-    );
-  });
 
 const decodePermissions = (token: string): string[] => {
   try {
@@ -53,45 +33,7 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
     return () => window.clearTimeout(timeout);
   }, [auth.isLoading]);
 
-  const hasRecoverableExpiredSession =
-    !auth.isLoading &&
-    !auth.isAuthenticated &&
-    auth.user?.expired === true &&
-    !!auth.user.refresh_token;
-  const expiredSessionRecoveryKey = hasRecoverableExpiredSession
-    ? auth.user?.expires_at
-    : undefined;
-  const attemptedExpiredSessionRecovery = useRef<number | undefined>(undefined);
-  const [failedExpiredSessionRecovery, setFailedExpiredSessionRecovery] = useState<
-    number | undefined
-  >(undefined);
-  const { signinSilent } = auth;
-
-  useEffect(() => {
-    if (
-      !expiredSessionRecoveryKey ||
-      attemptedExpiredSessionRecovery.current === expiredSessionRecoveryKey
-    )
-      return;
-
-    attemptedExpiredSessionRecovery.current = expiredSessionRecoveryKey;
-    void (async () => {
-      try {
-        await withSessionRecoveryTimeout(signinSilent());
-      } catch {
-        try {
-          await withSessionRecoveryTimeout(signinSilent({ forceIframeAuth: true }));
-        } catch {
-          console.warn("OIDC session recovery failed");
-          setFailedExpiredSessionRecovery(expiredSessionRecoveryKey);
-        }
-      }
-    })();
-  }, [expiredSessionRecoveryKey, signinSilent]);
-
-  const isLoading =
-    (auth.isLoading && !oidcInitializationTimedOut) ||
-    (hasRecoverableExpiredSession && failedExpiredSessionRecovery !== expiredSessionRecoveryKey);
+  const isLoading = auth.isLoading && !oidcInitializationTimedOut;
 
   const permissions = useMemo(
     () => (accessToken ? decodePermissions(accessToken) : EMPTY_PERMISSIONS),
