@@ -1,6 +1,6 @@
 # Job Hunter UI
 
-React dashboard for [Job Hunter](https://github.com/mshykhov/job-hunter). It provides public vacancy browsing and authenticated views for job status, preferences, statistics, and application materials.
+React dashboard for [Job Hunter](https://github.com/mshykhov-space/job-hunter). It provides public vacancy browsing and authenticated views for job status, preferences, statistics, and application materials.
 
 ## Run locally
 
