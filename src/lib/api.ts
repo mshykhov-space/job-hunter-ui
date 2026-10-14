@@ -1,12 +1,15 @@
-import axios, { type AxiosError, isAxiosError } from "axios";
+import axios, { isAxiosError } from "axios";
 export { isAxiosError };
 import { API_URL } from "@/config/constants";
+import { formatApiError } from "@/lib/apiErrors";
+import { SessionChangedError, SessionExpiredError } from "@/lib/oidcSession";
 import type { ApiError } from "@/types";
 
 declare module "axios" {
   interface AxiosRequestConfig {
     skipErrorHandler?: boolean;
     _retried?: boolean;
+    _authGeneration?: number;
   }
 }
 
@@ -23,6 +26,7 @@ let errorHandler: ErrorHandler | null = null;
 let tokenGetter: TokenGetter | null = null;
 let tokenRefresher: TokenGetter | null = null;
 let authErrorHandler: AuthErrorHandler | null = null;
+let authGeneration = 0;
 
 export const registerErrorHandler = (handler: ErrorHandler) => {
   errorHandler = handler;
@@ -30,13 +34,18 @@ export const registerErrorHandler = (handler: ErrorHandler) => {
 
 export const registerTokenGetter = (getter: TokenGetter) => {
   tokenGetter = getter;
+  authGeneration++;
   return () => {
-    tokenGetter = null;
+    if (tokenGetter === getter) {
+      tokenGetter = null;
+      authGeneration++;
+    }
   };
 };
 
 export const registerTokenRefresher = (refresher: TokenGetter) => {
   tokenRefresher = refresher;
+  refreshPromise = null;
   return () => {
     tokenRefresher = null;
   };
@@ -50,50 +59,69 @@ export const registerAuthErrorHandler = (handler: AuthErrorHandler) => {
 };
 
 api.interceptors.request.use(async (config) => {
-  if (tokenGetter) {
-    try {
-      const token = await tokenGetter();
-      config.headers.Authorization = `Bearer ${token}`;
-    } catch {
-      // Token unavailable — send request without auth
-    }
+  if (config._authGeneration !== undefined && config._authGeneration !== authGeneration) {
+    throw new SessionChangedError();
+  }
+  if (tokenGetter && !config._retried) {
+    const generation = authGeneration;
+    const token = await tokenGetter();
+    if (generation !== authGeneration) throw new SessionChangedError();
+    config._authGeneration = generation;
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-const formatError = (error: AxiosError<ApiError>): { title: string; detail: string } => {
-  if (!error.response) {
-    return { title: "Network Error", detail: "Cannot reach the server. Check your connection." };
-  }
-
-  const { status, data } = error.response;
-  const message = data?.message ?? error.message;
-
-  if (status === 403) return { title: "Access Denied", detail: message };
-  if (status === 404) return { title: "Not Found", detail: message };
-  if (status === 400) return { title: "Bad Request", detail: message };
-  if (status >= 500) return { title: "Server Error", detail: message };
-
-  return { title: `Error ${status}`, detail: message };
-};
-
 let refreshPromise: Promise<string> | null = null;
 
-const refreshTokenOnce = (): Promise<string> | null => {
+const refreshTokenOnce = (previousCredential: unknown): Promise<string> | null => {
   if (!tokenRefresher) return null;
   if (!refreshPromise) {
-    refreshPromise = tokenRefresher().finally(() => {
-      refreshPromise = null;
+    const refresher = tokenRefresher;
+    const getter = tokenGetter;
+    const pending = (async () => {
+      const current = await getter?.();
+      if (current && previousCredential !== `Bearer ${current}`) return current;
+      return refresher();
+    })().finally(() => {
+      if (refreshPromise === pending) refreshPromise = null;
     });
+    refreshPromise = pending;
   }
   return refreshPromise;
 };
 
 api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError<ApiError>) => {
+  (response) => {
+    if (
+      response.config._authGeneration !== undefined &&
+      response.config._authGeneration !== authGeneration
+    ) {
+      return Promise.reject(new SessionChangedError());
+    }
+    return response;
+  },
+  async (error: unknown) => {
+    if (error instanceof SessionChangedError) return Promise.reject(error);
+    if (error instanceof SessionExpiredError) {
+      authErrorHandler?.();
+      return Promise.reject(error);
+    }
+    if (!isAxiosError<ApiError>(error)) {
+      errorHandler?.(
+        "Session Unavailable",
+        "Cannot renew your session. Check your connection and try again."
+      );
+      return Promise.reject(error);
+    }
     const originalRequest = error.config;
     const hadToken = !!originalRequest?.headers?.Authorization;
+    if (
+      originalRequest?._authGeneration !== undefined &&
+      originalRequest._authGeneration !== authGeneration
+    ) {
+      return Promise.reject(new SessionChangedError());
+    }
 
     if (
       error.response?.status === 401 &&
@@ -101,16 +129,27 @@ api.interceptors.response.use(
       originalRequest &&
       !originalRequest._retried
     ) {
-      const pending = refreshTokenOnce();
+      const pending = refreshTokenOnce(originalRequest.headers.Authorization);
       if (pending) {
         originalRequest._retried = true;
         try {
           const freshToken = await pending;
+          if (originalRequest._authGeneration !== authGeneration) throw new SessionChangedError();
           originalRequest.headers.Authorization = `Bearer ${freshToken}`;
           return api(originalRequest);
-        } catch {
-          authErrorHandler?.();
-          return Promise.reject(error);
+        } catch (renewalError) {
+          if (renewalError instanceof SessionExpiredError) {
+            authErrorHandler?.();
+          } else if (
+            !(renewalError instanceof SessionChangedError) &&
+            !originalRequest.skipErrorHandler
+          ) {
+            errorHandler?.(
+              "Session Unavailable",
+              "Cannot renew your session. Check your connection and try again."
+            );
+          }
+          return Promise.reject(renewalError);
         }
       }
       authErrorHandler?.();
@@ -123,46 +162,11 @@ api.interceptors.response.use(
     }
 
     if (!originalRequest?.skipErrorHandler && error.response?.status !== 401) {
-      const { title, detail } = formatError(error);
+      const { title, detail } = formatApiError(error);
       errorHandler?.(title, detail);
     }
     return Promise.reject(error);
   }
 );
 
-export const API_PATHS = {
-  PUBLIC_JOBS: "/public/jobs",
-  PUBLIC_VERSION: "/public/version",
-  PUBLIC_JOB_SOURCES: "/public/jobs/sources",
-  JOBS_SEARCH: "/jobs/search",
-  JOB_GROUP_DETAIL: (groupId: string) => `/jobs/groups/${groupId}`,
-  JOB_GROUP_STATUS: (groupId: string) => `/jobs/groups/${groupId}/status`,
-  JOB_GROUPS_BULK_STATUS: "/jobs/groups/status",
-  CRITERIA: "/criteria",
-  PREFERENCES: "/preferences",
-  PREFERENCES_SEARCH: "/preferences/search",
-  PREFERENCES_MATCHING: "/preferences/matching",
-  PREFERENCES_TELEGRAM: "/preferences/telegram",
-  PREFERENCES_ABOUT: "/preferences/about",
-  PREFERENCES_ABOUT_FILE: "/preferences/about/file",
-  PREFERENCES_ABOUT_OPTIMIZE: "/preferences/about/optimize",
-  PREFERENCES_GENERATE: "/preferences/generate",
-  AI_PROVIDERS: "/settings/ai-providers",
-  AI_PROVIDER_CHAIN: "/settings/ai/providers",
-  JOB_MATERIALS: (jobId: string) => `/jobs/${jobId}/materials`,
-  JOB_MATERIAL_REVISIONS: (jobId: string) => `/jobs/${jobId}/materials/revisions`,
-  MATERIAL_ARTIFACT: (revisionId: string, kind: string) =>
-    `/materials/revisions/${revisionId}/artifacts/${kind}`,
-  MATERIAL_IMPROVE_SOL: (revisionId: string) =>
-    `/materials/revisions/${revisionId}/improve-with-sol`,
-  MATERIAL_SELECT: (revisionId: string) => `/materials/revisions/${revisionId}/select`,
-  MATERIAL_PROFILES: "/materials/profiles",
-  JOBS_REMATCH: "/jobs/rematch",
-  AUTOMATION_STATUS: "/automation/status",
-  AUTOMATION_WORKFLOW_RUNS: "/automation/workflows/runs",
-  AUTOMATION_WORKFLOW_RUN: (runId: string) => `/automation/workflows/runs/${runId}`,
-  AUTOMATION_WORKFLOW_CONTROL: (runId: string, action: "pause" | "resume" | "stop") =>
-    `/automation/workflows/runs/${runId}/${action}`,
-  VACANCY_STATISTICS: "/statistics/vacancies/query",
-  HEALTH: "/actuator/health",
-} as const;
+export { API_PATHS } from "@/config/apiPaths";

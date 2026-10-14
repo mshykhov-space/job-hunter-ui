@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 export const PERMISSIONS = {
   READ_JOBS: "read:jobs",
   WRITE_JOBS: "write:jobs",
+  MANAGE_JOBS: "manage:jobs",
   READ_PREFERENCES: "read:preferences",
   WRITE_PREFERENCES: "write:preferences",
   READ_AUTOMATION: "read:automation",
@@ -14,9 +15,10 @@ export interface AuthContextValue {
   isLoading: boolean;
   isConfigured: boolean;
   permissions: string[];
-  user?: { email?: string; name?: string; picture?: string };
+  user?: { subject?: string; email?: string; name?: string; picture?: string };
   loginWithRedirect: () => Promise<void>;
   logout: (options?: { logoutParams?: { returnTo?: string } }) => Promise<void>;
+  invalidateSession?: () => Promise<void>;
   getAccessTokenSilently: (options?: {
     cacheMode?: "on" | "off" | "cache-only";
   }) => Promise<string>;

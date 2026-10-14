@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { App, Flex } from "antd";
 
 import { useRematch } from "@/features/jobs/hooks/useRematch";
+import { PERMISSIONS, useAuth } from "@/hooks/useAuth";
 
 const REMATCH_OPTIONS = [
   { value: "6", label: "Last 6 hours" },
@@ -16,8 +17,10 @@ const REMATCH_OPTIONS = [
 export const useRematchPrompt = () => {
   const { modal } = App.useApp();
   const rematchMutation = useRematch();
+  const { isConfigured, permissions } = useAuth();
 
   return useCallback(() => {
+    if (isConfigured && !permissions.includes(PERMISSIONS.MANAGE_JOBS)) return;
     let hours = 12;
     modal.confirm({
       title: "Re-match jobs?",
@@ -49,5 +52,5 @@ export const useRematchPrompt = () => {
         rematchMutation.mutate(since);
       },
     });
-  }, [modal, rematchMutation]);
+  }, [modal, rematchMutation, isConfigured, permissions]);
 };

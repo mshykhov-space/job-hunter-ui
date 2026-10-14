@@ -1,12 +1,18 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { registerAuthErrorHandler, registerTokenGetter, registerTokenRefresher } from "@/lib/api";
 
 export const useAuthSetup = () => {
-  const { isConfigured, isLoading, isAuthenticated, getAccessTokenSilently, logout } = useAuth();
-
-  useEffect(() => {
+  const {
+    isConfigured,
+    isLoading,
+    isAuthenticated,
+    getAccessTokenSilently,
+    invalidateSession,
+    user,
+  } = useAuth();
+  useLayoutEffect(() => {
     if (!isConfigured || !isAuthenticated) return;
 
     const cleanupToken = registerTokenGetter(() => getAccessTokenSilently());
@@ -14,7 +20,7 @@ export const useAuthSetup = () => {
       getAccessTokenSilently({ cacheMode: "off" })
     );
     const cleanupAuth = registerAuthErrorHandler(() => {
-      logout({ logoutParams: { returnTo: `${window.location.origin}/explore` } });
+      void invalidateSession?.();
     });
 
     return () => {
@@ -22,7 +28,7 @@ export const useAuthSetup = () => {
       cleanupRefresher();
       cleanupAuth();
     };
-  }, [isConfigured, isAuthenticated, getAccessTokenSilently, logout]);
+  }, [isConfigured, isAuthenticated, getAccessTokenSilently, invalidateSession, user?.subject]);
 
   return { isLoading, isConfigured };
 };

@@ -38,27 +38,29 @@ describe("api interceptors", () => {
       expect(capturedAuth).toBe("Bearer my-token");
     });
 
-    it("sends request without token when tokenGetter throws", async () => {
-      let capturedAuth: string | null = null;
+    it("does not send an authenticated request when token renewal is unavailable", async () => {
+      let requests = 0;
       server.use(
-        http.get(`${API_BASE}/test`, ({ request }) => {
-          capturedAuth = request.headers.get("authorization");
+        http.get(`${API_BASE}/test`, () => {
+          requests++;
           return HttpResponse.json({ ok: true });
         })
       );
 
       api.registerTokenGetter(() => Promise.reject(new Error("expired")));
-      await api.api.get("/test");
+      await expect(api.api.get("/test")).rejects.toThrow("expired");
 
-      expect(capturedAuth).toBeNull();
+      expect(requests).toBe(0);
     });
   });
 
   describe("response interceptor — 401 retry", () => {
     it("retries with fresh token on 401", async () => {
       let callCount = 0;
+      const credentials: (string | null)[] = [];
       server.use(
-        http.get(`${API_BASE}/data`, () => {
+        http.get(`${API_BASE}/data`, ({ request }) => {
+          credentials.push(request.headers.get("authorization"));
           callCount++;
           if (callCount === 1) return new HttpResponse(null, { status: 401 });
           return HttpResponse.json({ result: "ok" });
@@ -71,6 +73,7 @@ describe("api interceptors", () => {
       const response = await api.api.get("/data");
 
       expect(callCount).toBe(2);
+      expect(credentials).toEqual(["Bearer old-token", "Bearer fresh-token"]);
       expect(response.data).toEqual({ result: "ok" });
     });
 
@@ -126,7 +129,7 @@ describe("api interceptors", () => {
       expect(resB.data).toEqual({ id: "b" });
     });
 
-    it("calls authErrorHandler when refresh fails", async () => {
+    it("keeps the session when refresh fails temporarily", async () => {
       server.use(http.get(`${API_BASE}/data`, () => new HttpResponse(null, { status: 401 })));
 
       const authHandler = vi.fn();
@@ -135,7 +138,35 @@ describe("api interceptors", () => {
       api.registerAuthErrorHandler(authHandler);
 
       await expect(api.api.get("/data")).rejects.toThrow();
-      expect(authHandler).toHaveBeenCalledOnce();
+      expect(authHandler).not.toHaveBeenCalled();
+    });
+
+    it("does not replay an old account's mutation with a new account's token", async () => {
+      const credentials: (string | null)[] = [];
+      let release: () => void = () => undefined;
+      server.use(
+        http.put(`${API_BASE}/preferences`, async ({ request }) => {
+          credentials.push(request.headers.get("authorization"));
+          if (credentials.length === 1) {
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          }
+          return new HttpResponse(null, { status: 401 });
+        })
+      );
+      api.registerTokenGetter(() => Promise.resolve("account-a"));
+      api.registerTokenRefresher(() => Promise.resolve("account-a-refreshed"));
+      const result = api.api
+        .put("/preferences", { about: "Account A" })
+        .catch((error: unknown) => error);
+      await vi.waitFor(() => expect(credentials).toHaveLength(1));
+      api.registerTokenGetter(() => Promise.resolve("account-b"));
+      api.registerTokenRefresher(() => Promise.resolve("account-b-refreshed"));
+      release();
+
+      expect(await result).toBeInstanceOf(Error);
+      expect(credentials).toEqual(["Bearer account-a"]);
     });
 
     it("calls authErrorHandler when no refresher is registered", async () => {

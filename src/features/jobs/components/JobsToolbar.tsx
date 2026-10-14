@@ -8,6 +8,8 @@ import {
 } from "@ant-design/icons";
 import { Button, Flex, Popover, Radio, Tooltip, Typography } from "antd";
 
+import { PERMISSIONS, useAuth } from "@/hooks/useAuth";
+
 import { ShortcutsHelp } from "./ShortcutsHelp";
 
 interface JobsToolbarProps {
@@ -50,6 +52,8 @@ export const JobsToolbar = ({
 }: JobsToolbarProps) => {
   const [rematchOpen, setRematchOpen] = useState(false);
   const [period, setPeriod] = useState<RematchPeriod>("24h");
+  const { isConfigured, permissions } = useAuth();
+  const canRematch = !isConfigured || permissions.includes(PERMISSIONS.MANAGE_JOBS);
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : null;
 
   const handleRematch = () => {
@@ -93,17 +97,23 @@ export const JobsToolbar = ({
         <Button type="text" icon={<ReadOutlined />} onClick={onReview} disabled={reviewDisabled}>
           Review
         </Button>
-        <Popover
-          content={rematchContent}
-          trigger="click"
-          open={rematchOpen}
-          onOpenChange={setRematchOpen}
-          placement="bottomRight"
-        >
-          <Tooltip title="Re-match jobs">
-            <Button type="text" icon={<SyncOutlined spin={rematchLoading} />} />
-          </Tooltip>
-        </Popover>
+        {canRematch && (
+          <Popover
+            content={rematchContent}
+            trigger="click"
+            open={rematchOpen}
+            onOpenChange={setRematchOpen}
+            placement="bottomRight"
+          >
+            <Tooltip title="Re-match jobs for all users">
+              <Button
+                type="text"
+                aria-label="Re-match jobs for all users"
+                icon={<SyncOutlined spin={rematchLoading} />}
+              />
+            </Tooltip>
+          </Popover>
+        )}
         <Tooltip title="Refresh">
           <Button type="text" icon={<ReloadOutlined spin={isFetching} />} onClick={onRefresh} />
         </Tooltip>

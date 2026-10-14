@@ -2,9 +2,12 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { useAuth as useOidcAuth } from "react-oidc-context";
 
 import { AuthContext } from "@/hooks/useAuth";
+import { useOidcRecovery } from "@/hooks/useOidcRecovery";
+import type { OidcSession } from "@/lib/oidcSession";
 
 interface OidcBridgeProps {
   children: ReactNode;
+  session: OidcSession;
 }
 
 const EMPTY_PERMISSIONS: string[] = [];
@@ -19,10 +22,12 @@ const decodePermissions = (token: string): string[] => {
   }
 };
 
-export const OidcBridge = ({ children }: OidcBridgeProps) => {
+export const OidcBridge = ({ children, session }: OidcBridgeProps) => {
   const auth = useOidcAuth();
   const accessToken = auth.user?.access_token;
+  const subject = auth.user?.profile.sub;
   const [oidcInitializationTimedOut, setOidcInitializationTimedOut] = useState(false);
+  const recovering = useOidcRecovery(session, auth.user, auth.isLoading);
 
   useEffect(() => {
     if (!auth.isLoading) return;
@@ -33,7 +38,7 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
     return () => window.clearTimeout(timeout);
   }, [auth.isLoading]);
 
-  const isLoading = auth.isLoading && !oidcInitializationTimedOut;
+  const isLoading = (auth.isLoading && !oidcInitializationTimedOut) || recovering;
 
   const permissions = useMemo(
     () => (accessToken ? decodePermissions(accessToken) : EMPTY_PERMISSIONS),
@@ -41,16 +46,17 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
   );
 
   const getAccessTokenSilently = useCallback(
-    async (options?: { cacheMode?: "on" | "off" | "cache-only" }) => {
-      const cached = auth.user?.access_token;
-      if (options?.cacheMode !== "off" && cached && !auth.user?.expired) {
-        return cached;
-      }
-      const user = await auth.signinSilent();
-      if (!user?.access_token) throw new Error("Silent token renewal failed");
-      return user.access_token;
-    },
-    [auth]
+    (options?: { cacheMode?: "on" | "off" | "cache-only" }) =>
+      session.getAccessToken(options?.cacheMode === "off", subject),
+    [session, subject]
+  );
+  const invalidateSession = useCallback(() => session.userManager.removeUser(), [session]);
+  const { signinRedirect, signoutRedirect } = auth;
+  const loginWithRedirect = useCallback(() => signinRedirect(), [signinRedirect]);
+  const logout = useCallback(
+    (options?: { logoutParams?: { returnTo?: string } }) =>
+      signoutRedirect({ post_logout_redirect_uri: options?.logoutParams?.returnTo }),
+    [signoutRedirect]
   );
 
   const resolvedPermissions = auth.isAuthenticated ? permissions : EMPTY_PERMISSIONS;
@@ -64,11 +70,16 @@ export const OidcBridge = ({ children }: OidcBridgeProps) => {
         isConfigured: true,
         permissions: resolvedPermissions,
         user: profile
-          ? { email: profile.email, name: profile.name, picture: profile.picture }
+          ? {
+              subject: profile.sub,
+              email: profile.email,
+              name: profile.name,
+              picture: profile.picture,
+            }
           : undefined,
-        loginWithRedirect: () => auth.signinRedirect(),
-        logout: (options) =>
-          auth.signoutRedirect({ post_logout_redirect_uri: options?.logoutParams?.returnTo }),
+        loginWithRedirect,
+        logout,
+        invalidateSession,
         getAccessTokenSilently,
       }}
     >

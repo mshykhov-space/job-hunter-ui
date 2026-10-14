@@ -14,10 +14,6 @@ vi.mock("react-oidc-context", () => ({
   },
 }));
 
-vi.mock("oidc-client-ts", () => ({
-  WebStorageStateStore: vi.fn(),
-}));
-
 vi.mock("@/config/constants", () => ({
   OIDC_ENABLED: true,
   OIDC_CONFIG: { authority: "https://auth.example.test", clientId: "job-hunter-ui" },
@@ -40,6 +36,13 @@ it("leaves expired-session renewal to the bounded application recovery", () => {
 
   expect(screen.getByText("Job Hunter")).toBeInTheDocument();
   expect(oidcProvider).toHaveBeenCalledWith(
-    expect.objectContaining({ automaticSilentRenew: false })
+    expect.objectContaining({
+      userManager: expect.objectContaining({
+        settings: expect.objectContaining({
+          automaticSilentRenew: false,
+          requestTimeoutInSeconds: 10,
+        }),
+      }),
+    })
   );
 });

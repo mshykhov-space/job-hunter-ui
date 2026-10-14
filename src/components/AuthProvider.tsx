@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { AuthProvider as OidcAuthProvider } from "react-oidc-context";
 
 import { WebStorageStateStore } from "oidc-client-ts";
 
 import { OIDC_CONFIG, OIDC_ENABLED } from "@/config/constants";
 import { AuthContext, type AuthContextValue, noopAuth, PERMISSIONS } from "@/hooks/useAuth";
+import { createOidcSession } from "@/lib/oidcSession";
 
 import { OidcBridge } from "./OidcBridge";
 
@@ -29,26 +30,29 @@ const onSigninCallback = () => {
   window.history.replaceState({}, document.title, window.location.pathname);
 };
 
+const ConfiguredAuthProvider = ({ children }: AuthProviderProps) => {
+  const [session] = useState(() =>
+    createOidcSession({
+      authority: OIDC_CONFIG.authority,
+      client_id: OIDC_CONFIG.clientId,
+      redirect_uri: window.location.origin,
+      scope: "openid profile email offline_access job-hunter-api",
+      userStore: new WebStorageStateStore({ store: window.localStorage }),
+    })
+  );
+  return (
+    <OidcAuthProvider userManager={session.userManager} onSigninCallback={onSigninCallback}>
+      <OidcBridge session={session}>{children}</OidcBridge>
+    </OidcAuthProvider>
+  );
+};
+
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   if (isMockMode) {
     return <AuthContext.Provider value={mockAuth}>{children}</AuthContext.Provider>;
   }
-
   if (!isOidcConfigured) {
     return <AuthContext.Provider value={noopAuth}>{children}</AuthContext.Provider>;
   }
-
-  return (
-    <OidcAuthProvider
-      authority={OIDC_CONFIG.authority}
-      client_id={OIDC_CONFIG.clientId}
-      redirect_uri={window.location.origin}
-      scope="openid profile email offline_access job-hunter-api"
-      automaticSilentRenew={false}
-      userStore={new WebStorageStateStore({ store: window.localStorage })}
-      onSigninCallback={onSigninCallback}
-    >
-      <OidcBridge>{children}</OidcBridge>
-    </OidcAuthProvider>
-  );
+  return <ConfiguredAuthProvider>{children}</ConfiguredAuthProvider>;
 };

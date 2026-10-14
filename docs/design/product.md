@@ -21,6 +21,8 @@ The current automation workflow is a three-step synthetic recovery drill. It ver
 - Desktop and `390x844` mobile layouts are required verification targets.
 - Server state belongs to TanStack Query and API calls use the shared authenticated client.
 - Runtime OIDC configuration controls authentication; protected routes and API permissions remain authoritative.
+- Expired sessions recover through a bounded refresh grant. Temporary provider failures retain credentials for retry; provider logout follows only explicit Logout.
+- Global rematching requires `manage:jobs`; ordinary users manage only personal job state and preferences.
 - Operational copy must identify whether a run is synthetic or vacancy-related and must not imply unsupported scheduling, screenshots, or submissions.
 
 ## Accessibility and success criteria
